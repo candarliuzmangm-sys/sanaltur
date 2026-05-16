@@ -17,6 +17,15 @@ enum PropertyStatus {
   ARCHIVED
 }
 
+enum PropertyCategory {
+  APARTMENT
+  VILLA
+  OFFICE
+  STORE
+  SHOP
+  OTHER
+}
+
 enum RoomType {
   LIVING_ROOM
   BEDROOM
@@ -63,21 +72,25 @@ model User {
 }
 
 model Property {
-  id           String         @id @default(uuid())
+  id           String            @id @default(uuid())
   title        String
   address      String?
   description  String?
-  status       PropertyStatus @default(DRAFT)
+  status       PropertyStatus    @default(DRAFT)
+  category     PropertyCategory  @default(APARTMENT)
+  floorCount   Int?
+  /// Tip bazında oda sayıları (örn: {"LIVING_ROOM":1,"BEDROOM":3,"BATHROOM":2,"BALCONY":1,"KITCHEN":1})
+  roomCounts   Json?
   coverImageUrl String?
-  publicSlug   String?        @unique
+  publicSlug   String?           @unique
   userId       String
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   rooms        Room[]
   floorplan    Floorplan?
   tour         Tour?
   aiJobs       AiJob[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([userId])
   @@index([publicSlug])

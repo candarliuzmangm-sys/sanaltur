@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { buildSmartFloorplan } from '../../shared/floorplan/smart-floorplan';
+
 @Injectable()
 export class AiClientService {
   private readonly logger = new Logger(AiClientService.name);
@@ -76,7 +78,12 @@ export class AiClientService {
     rooms: Array<{ id: string; name?: string; type: string; imageUrls: string[] }>;
   }) {
     if (this.mock) {
-      return mockFloorplan(payload);
+      const r = buildSmartFloorplan(payload.rooms);
+      return {
+        svgContent: r.svgContent,
+        estimatedAreaSqm: r.estimatedAreaSqm,
+        rooms: r.rooms,
+      };
     }
     return this.post('/ai/generate-floorplan', payload);
   }
@@ -137,90 +144,3 @@ function friendlyType(type: string): string {
   return map[type] ?? 'oda';
 }
 
-function mockFloorplan(payload: {
-  propertyId: string;
-  rooms: Array<{ id: string; name?: string; type: string }>;
-}) {
-  const cols = Math.ceil(Math.sqrt(payload.rooms.length));
-  const cellSize = 100;
-  const padding = 20;
-  const layoutRooms = payload.rooms.map((r, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const w = typicalWidth(r.type);
-    const h = typicalHeight(r.type);
-    return {
-      id: r.id,
-      name: r.name ?? friendlyType(r.type),
-      type: r.type,
-      x: padding + col * cellSize,
-      y: padding + row * cellSize,
-      width: w,
-      height: h,
-    };
-  });
-
-  const width = padding * 2 + cols * cellSize;
-  const rows = Math.ceil(payload.rooms.length / cols);
-  const height = padding * 2 + rows * cellSize;
-  const totalArea = layoutRooms.reduce(
-    (sum, r) => sum + (r.width * r.height) / 100,
-    0,
-  );
-
-  const rects = layoutRooms
-    .map(
-      (r) =>
-        `<g><rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" fill="${typeColor(r.type)}" stroke="#222" stroke-width="2"/><text x="${r.x + r.width / 2}" y="${r.y + r.height / 2}" text-anchor="middle" dominant-baseline="middle" font-family="Inter,sans-serif" font-size="11" fill="#111">${escapeXml(r.name)}</text></g>`,
-    )
-    .join('');
-
-  const svgContent =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
-    `<rect width="100%" height="100%" fill="#f8fafc"/>` +
-    rects +
-    `</svg>`;
-
-  return {
-    svgContent,
-    estimatedAreaSqm: Math.round(totalArea),
-    rooms: layoutRooms,
-  };
-}
-
-function typicalWidth(type: string): number {
-  if (type === 'LIVING_ROOM' || type === 'DINING_ROOM') return 90;
-  if (type === 'KITCHEN') return 70;
-  if (type === 'BATHROOM' || type === 'BALCONY') return 50;
-  return 70;
-}
-
-function typicalHeight(type: string): number {
-  if (type === 'LIVING_ROOM') return 80;
-  if (type === 'BATHROOM') return 50;
-  if (type === 'BALCONY' || type === 'HALLWAY') return 40;
-  return 70;
-}
-
-function typeColor(type: string): string {
-  const colors: Record<string, string> = {
-    LIVING_ROOM: '#c7e8d0',
-    KITCHEN: '#fde2c5',
-    BEDROOM: '#cfe6ff',
-    BATHROOM: '#e3d6f6',
-    DINING_ROOM: '#f7d9d4',
-    HALLWAY: '#e9eaee',
-    BALCONY: '#c9efe2',
-    OFFICE: '#fff1b3',
-    OTHER: '#e6e6e6',
-  };
-  return colors[type] ?? '#e6e6e6';
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}

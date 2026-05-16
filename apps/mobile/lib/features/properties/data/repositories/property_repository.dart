@@ -32,13 +32,20 @@ class PropertyRepository {
     required String title,
     String? address,
     String? description,
+    String? category,
+    int? floorCount,
+    Map<String, int>? roomCounts,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/properties',
       data: {
         'title': title,
-        'address': address,
-        'description': description,
+        if (address != null) 'address': address,
+        if (description != null) 'description': description,
+        if (category != null) 'category': category,
+        if (floorCount != null) 'floorCount': floorCount,
+        if (roomCounts != null && roomCounts.isNotEmpty)
+          'roomCounts': roomCounts,
       },
     );
     return PropertyModel.fromJson(response.data!);

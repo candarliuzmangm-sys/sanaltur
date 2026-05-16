@@ -32,8 +32,18 @@ class PropertyActions {
     required String title,
     String? address,
     String? description,
+    String? category,
+    int? floorCount,
+    Map<String, int>? roomCounts,
   }) =>
-      _repo.create(title: title, address: address, description: description);
+      _repo.create(
+        title: title,
+        address: address,
+        description: description,
+        category: category,
+        floorCount: floorCount,
+        roomCounts: roomCounts,
+      );
 
   Future<RoomModel> addRoom({
     required String propertyId,

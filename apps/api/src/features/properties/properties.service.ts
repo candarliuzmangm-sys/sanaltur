@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PropertyStatus } from '@prisma/client';
+import { PropertyCategory, PropertyStatus, RoomType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -35,13 +35,30 @@ export class PropertiesService {
   ) {}
 
   async create(userId: string, dto: CreatePropertyDto) {
+    const category = (dto.category ?? 'APARTMENT') as PropertyCategory;
+    const roomCounts = sanitizeRoomCounts(dto.roomCounts);
+    const rooms = buildInitialRooms(roomCounts);
+
     return this.prisma.property.create({
       data: {
         title: dto.title,
         address: dto.address,
         description: dto.description,
         status: PropertyStatus.CAPTURING,
+        category,
+        floorCount: dto.floorCount,
+        roomCounts: roomCounts as object,
         userId,
+        rooms: rooms.length
+          ? {
+              create: rooms.map((r, i) => ({
+                name: r.name,
+                type: r.type,
+                userSelectedType: r.type,
+                order: i,
+              })),
+            }
+          : undefined,
       },
       include: { rooms: { include: roomInclude, orderBy: { order: 'asc' } } },
     });
@@ -87,6 +104,12 @@ export class PropertiesService {
         address: dto.address,
         description: dto.description,
         coverImageUrl: dto.coverImageUrl,
+        category: dto.category as PropertyCategory | undefined,
+        floorCount: dto.floorCount,
+        roomCounts:
+          dto.roomCounts !== undefined
+            ? (sanitizeRoomCounts(dto.roomCounts) as object)
+            : undefined,
       },
       include: {
         rooms: {
@@ -337,6 +360,9 @@ export class PropertiesService {
   private mapPropertyResponse(property: any) {
     return {
       ...property,
+      category: property.category ?? 'APARTMENT',
+      floorCount: property.floorCount ?? null,
+      roomCounts: property.roomCounts ?? null,
       floorplan: property.floorplan
         ? {
             estimatedAreaSqm: property.floorplan.estimatedAreaSqm,
@@ -348,4 +374,87 @@ export class PropertiesService {
       rooms: property.rooms.map((room: any) => mapRoom(room)),
     };
   }
+}
+
+// ---------- helpers ----------
+
+const VALID_ROOM_TYPES = new Set<string>([
+  'LIVING_ROOM',
+  'BEDROOM',
+  'KITCHEN',
+  'BATHROOM',
+  'DINING_ROOM',
+  'OFFICE',
+  'HALLWAY',
+  'BALCONY',
+  'GARAGE',
+  'LAUNDRY',
+  'CLOSET',
+  'OTHER',
+]);
+
+/** Yalnızca bilinen oda tiplerini, 0-20 arası sayılarla tutar. */
+function sanitizeRoomCounts(
+  input?: Record<string, unknown>,
+): Record<string, number> {
+  if (!input || typeof input !== 'object') return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(input)) {
+    const key = String(k).toUpperCase();
+    if (!VALID_ROOM_TYPES.has(key)) continue;
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    out[key] = Math.min(20, Math.floor(n));
+  }
+  return out;
+}
+
+const ROOM_LABELS: Record<string, string> = {
+  LIVING_ROOM: 'Salon',
+  BEDROOM: 'Yatak Odası',
+  KITCHEN: 'Mutfak',
+  BATHROOM: 'Banyo',
+  DINING_ROOM: 'Yemek Odası',
+  OFFICE: 'Çalışma Odası',
+  HALLWAY: 'Antre',
+  BALCONY: 'Balkon',
+  GARAGE: 'Garaj',
+  LAUNDRY: 'Çamaşırlık',
+  CLOSET: 'Giyinme Odası',
+  OTHER: 'Oda',
+};
+
+const ROOM_ORDER = [
+  'LIVING_ROOM',
+  'KITCHEN',
+  'DINING_ROOM',
+  'BEDROOM',
+  'BATHROOM',
+  'OFFICE',
+  'BALCONY',
+  'HALLWAY',
+  'CLOSET',
+  'LAUNDRY',
+  'GARAGE',
+  'OTHER',
+];
+
+/** Sayım haritasından sıralı oda listesi üretir. Salon → Mutfak → Yatak → Banyo ... */
+function buildInitialRooms(
+  counts: Record<string, number>,
+): Array<{ name: string; type: RoomType }> {
+  const out: Array<{ name: string; type: RoomType }> = [];
+  for (const key of ROOM_ORDER) {
+    const n = counts[key] ?? 0;
+    if (n <= 0) continue;
+    const label = ROOM_LABELS[key] ?? 'Oda';
+    if (n === 1) {
+      out.push({ name: label, type: key as RoomType });
+    } else {
+      for (let i = 1; i <= n; i++) {
+        out.push({ name: `${label} ${i}`, type: key as RoomType });
+      }
+    }
+  }
+  return out;
 }
