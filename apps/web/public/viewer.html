@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Sanaltur</title>
+  <script src="https://cdn.jsdelivr.net/npm/marzipano@0.10.2/build/marzipano.js"></script>
+  <link rel="stylesheet" href="/tour.css" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    #root { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root" class="tour-shell">
+    <div class="tour-empty" id="loading">Tur yükleniyor…</div>
+  </div>
+  <script>
+    function escapeHtml(t) {
+      return String(t)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    var state = { tour: null, currentId: null, viewer: null, scene: null, hotspotHandles: [] };
+
+    window.initTour = function (tour) {
+      state.tour = tour;
+      var rooms = (tour.rooms || []).slice().sort(function (a, b) { return a.order - b.order; });
+      if (!rooms.length) {
+        document.getElementById('root').innerHTML = '<div class="tour-empty">Oda yok</div>';
+        return;
+      }
+      state.currentId = tour.startRoomId && rooms.some(function (r) { return r.id === tour.startRoomId; })
+        ? tour.startRoomId
+        : rooms[0].id;
+      renderShell(tour, rooms);
+      showRoom(rooms.find(function (r) { return r.id === state.currentId; }));
+    };
+
+    function renderShell(tour, rooms) {
+      var root = document.getElementById('root');
+      root.innerHTML =
+        '<header class="tour-header"><div><h1>' + escapeHtml(tour.title) + '</h1></div></header>' +
+        '<div class="tour-stage" id="stage"></div>' +
+        '<footer class="tour-footer"><div class="tour-rooms" id="chips"></div>' +
+        '<p class="tour-hint">Yeşil noktalara dokunun · sürükleyerek bakın</p></footer>';
+      var chips = document.getElementById('chips');
+      rooms.forEach(function (room) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tour-room-chip';
+        btn.textContent = room.name;
+        btn.dataset.roomId = room.id;
+        btn.onclick = function () { state.currentId = room.id; updateChips(); showRoom(room); };
+        chips.appendChild(btn);
+      });
+      updateChips();
+    }
+
+    function updateChips() {
+      document.querySelectorAll('.tour-room-chip').forEach(function (el) {
+        el.classList.toggle('tour-room-chip--active', el.dataset.roomId === state.currentId);
+      });
+    }
+
+    function clearHotspots() {
+      state.hotspotHandles.forEach(function (h) { h.destroy(); });
+      state.hotspotHandles = [];
+    }
+
+    function showRoom(room) {
+      if (!room || !room.panoramaUrl) {
+        document.getElementById('stage').innerHTML = '<div class="tour-empty">Görsel yok</div>';
+        return;
+      }
+      var stage = document.getElementById('stage');
+      stage.innerHTML = '<div class="tour-panorama" id="pano"></div>';
+      var el = document.getElementById('pano');
+      if (state.viewer) { state.viewer.destroy(); state.viewer = null; }
+      clearHotspots();
+      var viewer = new Marzipano.Viewer(el, { controls: { mouseViewMode: 'drag' } });
+      state.viewer = viewer;
+      var source = Marzipano.ImageUrlSource.fromString(room.panoramaUrl);
+      var geometry = new Marzipano.EquirectGeometry([{ width: 4096 }]);
+      var limiter = Marzipano.RectilinearView.limit.traditional(4096, 120 * Math.PI / 180);
+      var view = new Marzipano.RectilinearView({ yaw: 0, pitch: 0, fov: Math.PI / 2 }, limiter);
+      var scene = viewer.createScene({ source: source, geometry: geometry, view: view });
+      scene.switchTo();
+      state.scene = scene;
+      var container = scene.hotspotContainer();
+      (room.hotspots || []).forEach(function (spot) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tour-hotspot';
+        btn.innerHTML = '<span class="tour-hotspot__dot"></span><span class="tour-hotspot__label">' + escapeHtml(spot.label) + '</span>';
+        btn.onclick = function (e) {
+          e.stopPropagation();
+          var target = state.tour.rooms.find(function (r) { return r.id === spot.targetRoomId; });
+          if (target) {
+            state.currentId = target.id;
+            updateChips();
+            showRoom(target);
+          }
+        };
+        state.hotspotHandles.push(container.createHotspot(btn, { yaw: spot.yaw, pitch: spot.pitch }));
+      });
+    }
+
+    if (window.__TOUR_DATA__) {
+      window.initTour(window.__TOUR_DATA__);
+    }
+  </script>
+</body>
+</html>

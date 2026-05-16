@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+.railway-token
+railway-token.txt
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Flutter
+apps/mobile/.dart_tool/
+apps/mobile/.packages
+apps/mobile/build/
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+apps/mobile/**/*.iml
+apps/mobile/.pub-cache/
+apps/mobile/.pub/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+apps/ai-service/.venv/
+apps/ai-service/.pytest_cache/
+
+# Prisma
+apps/api/prisma/migrations/**/migration_lock.toml
+
+# Uploads (local dev)
+uploads/
+tmp/
+
+# Docker
+*.pid
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+.terraform/

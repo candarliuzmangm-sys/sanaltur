@@ -1,0 +1,23 @@
+:root {
+  --primary: #1b4d3e;
+  --accent: #c9a227;
+  --bg: #f8faf9;
+  --text: #1a1a1a;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary);
+}

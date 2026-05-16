@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PropertyStatus {
+  DRAFT
+  CAPTURING
+  PROCESSING
+  READY
+  PUBLISHED
+  ARCHIVED
+}
+
+enum RoomType {
+  LIVING_ROOM
+  BEDROOM
+  KITCHEN
+  BATHROOM
+  DINING_ROOM
+  OFFICE
+  HALLWAY
+  BALCONY
+  GARAGE
+  LAUNDRY
+  CLOSET
+  OTHER
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  PANORAMA
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum JobType {
+  ROOM_CLASSIFY
+  ROOM_ORDER
+  FLOORPLAN_GENERATE
+  TOUR_GENERATE
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String
+  fullName     String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  properties   Property[]
+}
+
+model Property {
+  id           String         @id @default(uuid())
+  title        String
+  address      String?
+  description  String?
+  status       PropertyStatus @default(DRAFT)
+  coverImageUrl String?
+  publicSlug   String?        @unique
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rooms        Room[]
+  floorplan    Floorplan?
+  tour         Tour?
+  aiJobs       AiJob[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([publicSlug])
+}
+
+model Room {
+  id               String    @id @default(uuid())
+  name             String
+  type             RoomType  @default(OTHER)
+  coverPhotoUrl    String?
+  userSelectedType RoomType?
+  aiDetectedType   RoomType?
+  aiConfidence     Float?
+  order            Int       @default(0)
+  propertyId       String
+  property         Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  media            Media[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([propertyId])
+}
+
+model Media {
+  id        String    @id @default(uuid())
+  key       String
+  url       String
+  mimeType  String
+  type      MediaType @default(IMAGE)
+  fileName  String?
+  roomId    String
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([roomId])
+}
+
+model Floorplan {
+  id               String   @id @default(uuid())
+  svgUrl           String?
+  pngUrl           String?
+  estimatedAreaSqm Float?
+  layoutJson       Json?
+  propertyId       String   @unique
+  property         Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Tour {
+  id         String   @id @default(uuid())
+  slug       String   @unique
+  graphJson  Json?
+  propertyId String   @unique
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AiJob {
+  id         String    @id @default(uuid())
+  type       JobType
+  status     JobStatus @default(PENDING)
+  payload    Json?
+  result     Json?
+  error      String?
+  propertyId String
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([propertyId, status])
+}
