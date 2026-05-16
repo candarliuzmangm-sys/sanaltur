@@ -6,6 +6,7 @@ import '../../data/models/property_model.dart';
 import '../../data/models/room_model.dart';
 import '../providers/property_provider.dart';
 import 'add_room_sheet.dart';
+import 'ai_photo_editor_sheet.dart';
 import 'room_card.dart';
 
 class ReorderableRoomsList extends ConsumerStatefulWidget {
@@ -131,6 +132,15 @@ class _ReorderableRoomsListState extends ConsumerState<ReorderableRoomsList> {
                           imageUrl: url,
                         )
                     : null,
+                onAiEdit: (mediaId, url) {
+                  AiPhotoEditorSheet.show(
+                    context,
+                    propertyId: propertyId,
+                    roomId: room.id,
+                    mediaId: mediaId,
+                    imageUrl: url,
+                  );
+                },
               ),
             );
           },

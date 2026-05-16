@@ -11,6 +11,7 @@ import { PublicModule } from './features/public/public.module';
 import { RoomsModule } from './features/rooms/rooms.module';
 import { ToursModule } from './features/tours/tours.module';
 import { HealthController } from './health.controller';
+import { AiModule } from './shared/ai/ai.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
 import { StorageModule } from './shared/storage/storage.module';
 
@@ -26,6 +27,7 @@ import { StorageModule } from './shared/storage/storage.module';
     }),
     PrismaModule,
     StorageModule,
+    AiModule,
     AuthModule,
     PropertiesModule,
     RoomsModule,

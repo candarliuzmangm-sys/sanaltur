@@ -172,6 +172,28 @@ class PropertyActions {
     invalidate(propertyId);
   }
 
+  /// AI ile foto düzenle. [op]: erase|inpaint|replace|recolor|outpaint
+  Future<Map<String, dynamic>> aiEditMedia({
+    required String propertyId,
+    required String roomId,
+    required String mediaId,
+    required String op,
+    String? prompt,
+    String? target,
+    bool asNewMedia = true,
+  }) async {
+    final result = await _repo.editMedia(
+      roomId: roomId,
+      mediaId: mediaId,
+      op: op,
+      prompt: prompt,
+      target: target,
+      asNewMedia: asNewMedia,
+    );
+    if (asNewMedia) invalidate(propertyId);
+    return result;
+  }
+
   void invalidate(String propertyId) {
     _ref.invalidate(propertyListProvider);
     _ref.invalidate(propertyDetailProvider(propertyId));

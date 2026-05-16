@@ -5,22 +5,34 @@ import {
   Param,
   Post,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  FileFieldsInterceptor,
+  FileInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ConfirmMediaDto } from './dto/confirm-media.dto';
+import { EditMediaDto } from './dto/edit-media.dto';
 import { PresignMediaDto } from './dto/presign-media.dto';
 import { MediaService } from './media.service';
 
 const imageUploadOptions = {
   storage: memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
+};
+
+const panoramaUploadOptions = {
+  storage: memoryStorage(),
+  // 12 foto × 10MB = 120MB üst sınır
+  limits: { fileSize: 15 * 1024 * 1024 },
 };
 
 @ApiTags('media')
@@ -72,5 +84,35 @@ export class MediaController {
     @Param('mediaId') mediaId: string,
   ) {
     return this.mediaService.remove(user.userId, roomId, mediaId);
+  }
+
+  /**
+   * AI ile fotoğrafı düzenle: eşya kaldır / koy / değiştir / renk değiştir.
+   * `asNewMedia=false` ise sadece base64 önizleme döner (yeni medya oluşturmaz).
+   */
+  @Post(':mediaId/edit')
+  editMedia(
+    @CurrentUser() user: { userId: string },
+    @Param('roomId') roomId: string,
+    @Param('mediaId') mediaId: string,
+    @Body() dto: EditMediaDto,
+  ) {
+    return this.mediaService.editMedia(user.userId, roomId, mediaId, dto);
+  }
+
+  /**
+   * Birden çok fotoyu AI ile birleştirir (panorama).
+   * Form alanı: `files` (multi-file, 2-12 adet, sıralı sağa dönüş).
+   * Sonuç: yeni PANORAMA medya olarak kaydedilir.
+   */
+  @Post('panorama-stitch')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('files', 12, panoramaUploadOptions))
+  stitchPanorama(
+    @CurrentUser() user: { userId: string },
+    @Param('roomId') roomId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.mediaService.stitchPanorama(user.userId, roomId, files);
   }
 }

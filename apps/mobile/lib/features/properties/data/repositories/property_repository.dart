@@ -142,6 +142,29 @@ class PropertyRepository {
     await _dio.delete('/rooms/$roomId/media/$mediaId');
   }
 
+  /// AI ile fotoğraf düzenle (Stability AI).
+  /// [op] = erase | inpaint | replace | recolor | outpaint
+  Future<Map<String, dynamic>> editMedia({
+    required String roomId,
+    required String mediaId,
+    required String op,
+    String? prompt,
+    String? target,
+    bool asNewMedia = true,
+  }) async {
+    final resp = await _dio.post<Map<String, dynamic>>(
+      '/rooms/$roomId/media/$mediaId/edit',
+      data: {
+        'op': op,
+        if (prompt != null) 'prompt': prompt,
+        if (target != null) 'target': target,
+        'asNewMedia': asNewMedia,
+      },
+      options: Options(receiveTimeout: const Duration(seconds: 90)),
+    );
+    return resp.data ?? const {};
+  }
+
   Future<void> analyzeProperty(String propertyId) async {
     await _dio.post('/properties/$propertyId/analyze');
   }

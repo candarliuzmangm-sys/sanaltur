@@ -1,12 +1,13 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdir, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { v4 as uuid } from 'uuid';
 
@@ -77,6 +78,32 @@ export class StorageService {
       ContentType: mimeType,
     });
     return getSignedUrl(this.client, command, { expiresIn: 900 });
+  }
+
+  /** Storage'tan dosya içeriğini Buffer olarak çeker (AI edit için). */
+  async readObject(key: string): Promise<Buffer | null> {
+    try {
+      if (this.mode === 'local') {
+        const fullPath = join(this.uploadsDir, key);
+        return await readFile(fullPath);
+      }
+      const resp = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      if (!resp.Body) return null;
+      // @ts-ignore — AWS SDK v3 Node stream
+      const stream: NodeJS.ReadableStream = resp.Body as any;
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any));
+      }
+      return Buffer.concat(chunks);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to read object ${key}: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   async deleteObject(key: string): Promise<void> {

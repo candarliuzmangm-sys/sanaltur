@@ -37,6 +37,36 @@ class UploadRepository {
   final Dio _dio;
   final _uuid = const Uuid();
 
+  /// 2-12 fotoyu AI panorama olarak birleştirip backend'e yükler.
+  /// Sonuç: tek PANORAMA medya kaydedilir.
+  Future<UploadResult> stitchPanorama({
+    required String roomId,
+    required List<String> photoPaths,
+  }) async {
+    if (photoPaths.length < 2) {
+      throw ArgumentError('En az 2 foto gerekli');
+    }
+    final form = FormData();
+    for (final path in photoPaths) {
+      final base = p.basename(path);
+      form.files.add(
+        MapEntry(
+          'files',
+          await MultipartFile.fromFile(path, filename: base),
+        ),
+      );
+    }
+    final resp = await _dio.post<Map<String, dynamic>>(
+      '/rooms/$roomId/media/panorama-stitch',
+      data: form,
+      options: Options(
+        sendTimeout: const Duration(minutes: 3),
+        receiveTimeout: const Duration(minutes: 3),
+      ),
+    );
+    return UploadResult.fromJson(resp.data!);
+  }
+
   Future<UploadTaskModel> enqueueMedia({
     required String propertyId,
     required String roomId,

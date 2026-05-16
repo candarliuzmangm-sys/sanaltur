@@ -2,24 +2,42 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MediaType } from '@prisma/client';
 
+import { StabilityClientService } from '../../shared/ai/stability-client.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { mapRoom, roomInclude } from '../../shared/mappers/room.mapper';
 import { StorageService } from '../../shared/storage/storage.service';
 import { RoomClassificationService } from '../ai-jobs/room-classification.service';
 import { ConfirmMediaDto } from './dto/confirm-media.dto';
+import { EditMediaDto } from './dto/edit-media.dto';
 import { PresignMediaDto } from './dto/presign-media.dto';
 
 @Injectable()
 export class MediaService {
+  private readonly logger = new Logger(MediaService.name);
+  private readonly aiServiceUrl: string;
+  private readonly aiMock: boolean;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly roomClassification: RoomClassificationService,
-  ) {}
+    private readonly stability: StabilityClientService,
+    config: ConfigService,
+  ) {
+    this.aiServiceUrl = config.get<string>(
+      'AI_SERVICE_URL',
+      'http://localhost:8000',
+    );
+    const flag = (config.get<string>('AI_MOCK') ?? '').toLowerCase();
+    this.aiMock = flag === '1' || flag === 'true' || flag === 'yes';
+  }
 
   async uploadFile(
     userId: string,
@@ -160,6 +178,272 @@ export class MediaService {
         createdAt: media.createdAt,
       },
       room: mappedRoom,
+    };
+  }
+
+  /**
+   * Mevcut bir foto üzerinde AI edit yapar (Stability AI).
+   * `asNewMedia=false` ise yalnız preview döner (yeni medya oluşturmaz).
+   */
+  async editMedia(
+    userId: string,
+    roomId: string,
+    mediaId: string,
+    dto: EditMediaDto,
+  ) {
+    const room = await this.ensureRoomOwner(userId, roomId);
+    const media = await this.prisma.media.findFirst({
+      where: { id: mediaId, roomId },
+    });
+    if (!media) throw new NotFoundException('Media not found');
+    if (media.type === MediaType.VIDEO) {
+      throw new BadRequestException('Video düzenleme desteklenmiyor');
+    }
+
+    // Orijinal binary'i çek (storage'tan)
+    const original = await this.storage.readObject(media.key);
+    if (!original) {
+      throw new BadRequestException('Orijinal dosya okunamadı');
+    }
+
+    let result;
+    switch (dto.op) {
+      case 'erase':
+        result = await this.stability.erase({
+          image: original,
+          prompt: dto.prompt,
+        });
+        break;
+      case 'inpaint':
+        if (!dto.prompt) {
+          throw new BadRequestException('inpaint için prompt zorunlu');
+        }
+        result = await this.stability.inpaint({
+          image: original,
+          prompt: dto.prompt,
+        });
+        break;
+      case 'replace':
+        if (!dto.target || !dto.prompt) {
+          throw new BadRequestException(
+            'replace için target ve prompt zorunlu',
+          );
+        }
+        result = await this.stability.searchAndReplace({
+          image: original,
+          searchPrompt: dto.target,
+          prompt: dto.prompt,
+        });
+        break;
+      case 'recolor':
+        if (!dto.target || !dto.prompt) {
+          throw new BadRequestException(
+            'recolor için target ve prompt zorunlu',
+          );
+        }
+        result = await this.stability.searchAndRecolor({
+          image: original,
+          selectPrompt: dto.target,
+          prompt: dto.prompt,
+        });
+        break;
+      case 'outpaint':
+        result = await this.stability.outpaint({
+          image: original,
+          left: 256,
+          right: 256,
+          prompt: dto.prompt,
+        });
+        break;
+      default:
+        throw new BadRequestException('Bilinmeyen op');
+    }
+
+    // Eğer kullanıcı önizleme istiyorsa yeni medya oluşturma
+    if (dto.asNewMedia === false) {
+      const dataUrl = `data:${result.mimeType};base64,${result.buffer.toString('base64')}`;
+      return { previewDataUrl: dataUrl };
+    }
+
+    // Yeni medya olarak kaydet
+    const ext = result.mimeType.includes('png') ? 'png' : 'jpg';
+    const newName = `${media.fileName?.split('.')[0] ?? 'edit'}-${dto.op}.${ext}`;
+    const key = this.storage.buildKey(`rooms/${roomId}`, newName);
+
+    let url: string;
+    if (this.storage.mode === 'local') {
+      url = await this.storage.saveLocal(result.buffer, key);
+    } else {
+      const uploadUrl = await this.storage.getPresignedUploadUrl(
+        key,
+        result.mimeType,
+      );
+      const resp = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': result.mimeType },
+        body: new Uint8Array(result.buffer),
+      });
+      if (!resp.ok) {
+        throw new BadRequestException('AI sonucu storage\'a yüklenemedi');
+      }
+      url = this.storage.getPublicUrl(key);
+    }
+
+    const newMedia = await this.prisma.media.create({
+      data: {
+        key,
+        url,
+        mimeType: result.mimeType,
+        type: media.type, // aynı tip (PANORAMA ise PANORAMA)
+        fileName: newName,
+        roomId,
+      },
+    });
+
+    const mappedRoom = await this.getMappedRoom(roomId);
+    return {
+      media: {
+        id: newMedia.id,
+        url: newMedia.url,
+        mimeType: newMedia.mimeType,
+        type: newMedia.type,
+        fileName: newMedia.fileName,
+        createdAt: newMedia.createdAt,
+      },
+      room: mappedRoom,
+      source: { id: media.id, url: media.url },
+      op: dto.op,
+    };
+  }
+
+  /**
+   * Birden çok fotoyu birleştirip PANORAMA medya olarak kaydeder.
+   * - AI_MOCK=true veya ai-service erişilemez ise: ilk fotoyu PANORAMA olarak kaydet.
+   * - Aksi halde ai-service /ai/panorama/stitch'e POST eder, sonucu kaydeder.
+   */
+  async stitchPanorama(
+    userId: string,
+    roomId: string,
+    files: Express.Multer.File[],
+  ) {
+    if (!files || files.length < 2) {
+      throw new BadRequestException('En az 2 fotoğraf gerekli');
+    }
+    if (files.length > 12) {
+      throw new BadRequestException('En fazla 12 fotoğraf');
+    }
+    const room = await this.ensureRoomOwner(userId, roomId);
+
+    let panoBuffer: Buffer;
+    let mimeType = 'image/jpeg';
+    let mode: 'real' | 'mock-first-photo' = 'real';
+
+    if (this.aiMock) {
+      // Mock mode: ilk fotoyu döndür (panorama gibi)
+      panoBuffer = files[0]!.buffer;
+      mimeType = files[0]!.mimetype || 'image/jpeg';
+      mode = 'mock-first-photo';
+      this.logger.warn(
+        'AI_MOCK=true — panorama stitching mock (ilk foto kaydedildi)',
+      );
+    } else {
+      try {
+        const form = new FormData();
+        for (const f of files) {
+          form.append(
+            'files',
+            new Blob([new Uint8Array(f.buffer)], { type: f.mimetype }),
+            f.originalname,
+          );
+        }
+        const resp = await fetch(`${this.aiServiceUrl}/ai/panorama/stitch`, {
+          method: 'POST',
+          body: form,
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          this.logger.error(
+            `ai-service panorama HTTP ${resp.status}: ${text.slice(0, 200)}`,
+          );
+          // Stitch başarısız → fallback: ilk fotoyu PANORAMA olarak kullan
+          panoBuffer = files[0]!.buffer;
+          mimeType = files[0]!.mimetype || 'image/jpeg';
+          mode = 'mock-first-photo';
+        } else {
+          panoBuffer = Buffer.from(await resp.arrayBuffer());
+          mimeType = resp.headers.get('content-type') ?? 'image/jpeg';
+        }
+      } catch (err) {
+        this.logger.error(
+          `ai-service unreachable: ${(err as Error).message} — fallback to first photo`,
+        );
+        panoBuffer = files[0]!.buffer;
+        mimeType = files[0]!.mimetype || 'image/jpeg';
+        mode = 'mock-first-photo';
+      }
+    }
+
+    // Storage'a yaz
+    const ext = mimeType.includes('png') ? 'png' : 'jpg';
+    const key = this.storage.buildKey(`rooms/${roomId}`, `panorama.${ext}`);
+    let url: string;
+    if (this.storage.mode === 'local') {
+      url = await this.storage.saveLocal(panoBuffer, key);
+    } else {
+      const uploadUrl = await this.storage.getPresignedUploadUrl(
+        key,
+        mimeType,
+      );
+      const resp = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': mimeType },
+        body: new Uint8Array(panoBuffer),
+      });
+      if (!resp.ok) {
+        throw new ServiceUnavailableException(
+          'Panorama storage\'a yüklenemedi',
+        );
+      }
+      url = this.storage.getPublicUrl(key);
+    }
+
+    const media = await this.prisma.media.create({
+      data: {
+        key,
+        url,
+        mimeType,
+        type: MediaType.PANORAMA,
+        fileName: `panorama.${ext}`,
+        roomId,
+      },
+    });
+
+    if (!room.coverPhotoUrl) {
+      await this.prisma.room.update({
+        where: { id: roomId },
+        data: { coverPhotoUrl: url },
+      });
+    }
+    if (!room.property.coverImageUrl) {
+      await this.prisma.property.update({
+        where: { id: room.propertyId },
+        data: { coverImageUrl: url },
+      });
+    }
+
+    const mappedRoom = await this.getMappedRoom(roomId);
+    return {
+      media: {
+        id: media.id,
+        url: media.url,
+        mimeType: media.mimeType,
+        type: media.type,
+        fileName: media.fileName,
+        createdAt: media.createdAt,
+      },
+      room: mappedRoom,
+      mode,
+      sourcePhotos: files.length,
     };
   }
 

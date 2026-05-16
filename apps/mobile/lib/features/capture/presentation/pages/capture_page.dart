@@ -19,6 +19,7 @@ enum CaptureMode {
   photo,
   gallery,
   panorama,
+  aiPanorama,
 }
 
 class CapturePage extends ConsumerStatefulWidget {
@@ -107,12 +108,21 @@ class _CapturePageState extends ConsumerState<CapturePage> {
                     ),
                     const SizedBox(height: 14),
                     _ModeCard(
-                      icon: Icons.view_in_ar_outlined,
-                      title: '360° Panorama',
+                      icon: Icons.auto_awesome,
+                      title: 'AI 360° Panorama',
                       description:
-                          'Telefon kamerasındaki "Panorama" modunda çekilmiş 360°/equirectangular fotoğrafı seç. Sanal turda gerçek 360 görünüm.',
+                          'Aynı yerden dönerek 4-8 foto çek (galeriden seç), AI birleştirip 360° panorama oluştursun.',
                       accent: const Color(0xFF22C55E),
-                      badge: 'En iyi tur',
+                      badge: 'AI · Önerilen',
+                      onTap: () => _pickPhotosForAiPanorama(),
+                    ),
+                    const SizedBox(height: 14),
+                    _ModeCard(
+                      icon: Icons.view_in_ar_outlined,
+                      title: 'Hazır 360° foto',
+                      description:
+                          'Telefonun "Panorama" modunda çekilmiş tek bir equirectangular foto seç.',
+                      accent: const Color(0xFF6366F1),
                       onTap: () => _pickPanoramaFromGallery(),
                     ),
                     const SizedBox(height: 14),
@@ -121,7 +131,7 @@ class _CapturePageState extends ConsumerState<CapturePage> {
                       title: 'Galeriden yükle',
                       description:
                           'Hazır fotoğraflarını çoklu seçimle hızlıca yükle.',
-                      accent: const Color(0xFF6366F1),
+                      accent: const Color(0xFF94A3B8),
                       onTap: () => _pickGalleryMulti(),
                     ),
                   ],
@@ -223,8 +233,11 @@ class _CapturePageState extends ConsumerState<CapturePage> {
 
   Scaffold _gallerySelectionScaffold() {
     final isPano = _mode == CaptureMode.panorama;
+    final isAiPano = _mode == CaptureMode.aiPanorama;
     return _genericScaffold(
-      title: isPano ? '360° Panorama' : 'Galeriden yükle',
+      title: isAiPano
+          ? 'AI 360° Panorama'
+          : (isPano ? '360° Panorama' : 'Galeriden yükle'),
       body: _pending.isEmpty
           ? Center(
               child: Padding(
@@ -549,6 +562,29 @@ class _CapturePageState extends ConsumerState<CapturePage> {
     });
   }
 
+  /// AI Panorama: 2-12 foto seç, backend'de stitch → tek PANORAMA medya.
+  Future<void> _pickPhotosForAiPanorama() async {
+    final picks =
+        await ImagePicker().pickMultiImage(imageQuality: 92, limit: 12);
+    if (picks.isEmpty || !mounted) return;
+    if (picks.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI panorama için en az 2 foto seç'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _mode = CaptureMode.aiPanorama;
+      _pending
+        ..clear()
+        ..addAll(picks.map((p) => _PendingItem(p.path, 'IMAGE')));
+      _uploadError = null;
+    });
+  }
+
   String _mimeForPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
@@ -566,21 +602,33 @@ class _CapturePageState extends ConsumerState<CapturePage> {
 
     try {
       UploadResult? lastResult;
-      for (final item in _pending) {
-        lastResult =
-            await ref.read(uploadQueueProvider.notifier).enqueueAndUpload(
-                  propertyId: widget.propertyId,
-                  roomId: widget.roomId,
-                  localPath: item.path,
-                  mimeType: _mimeForPath(item.path),
-                  mediaType: item.mediaType,
-                );
+
+      // AI Panorama modu: tek seferde stitch & upload
+      if (_mode == CaptureMode.aiPanorama && _pending.length >= 2) {
+        setState(() => _aiResultLabel = 'AI birleştiriyor…');
+        lastResult = await ref.read(uploadRepositoryProvider).stitchPanorama(
+              roomId: widget.roomId,
+              photoPaths: _pending.map((e) => e.path).toList(),
+            );
+      } else {
+        for (final item in _pending) {
+          lastResult =
+              await ref.read(uploadQueueProvider.notifier).enqueueAndUpload(
+                    propertyId: widget.propertyId,
+                    roomId: widget.roomId,
+                    localPath: item.path,
+                    mimeType: _mimeForPath(item.path),
+                    mediaType: item.mediaType,
+                  );
+        }
       }
 
       if (lastResult != null && mounted) {
         final aiType = lastResult.room.aiDetectedType;
         setState(() {
-          _aiResultLabel = aiType?.label ?? 'Yüklendi';
+          _aiResultLabel = _mode == CaptureMode.aiPanorama
+              ? '360° panorama oluşturuldu'
+              : (aiType?.label ?? 'Yüklendi');
         });
         ref.invalidate(
           roomDetailProvider((
@@ -588,7 +636,7 @@ class _CapturePageState extends ConsumerState<CapturePage> {
             roomId: widget.roomId,
           )),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
         if (mounted) context.pop();
       }
     } catch (e) {

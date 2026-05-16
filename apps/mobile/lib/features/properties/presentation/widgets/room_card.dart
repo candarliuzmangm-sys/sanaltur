@@ -15,6 +15,7 @@ class RoomCard extends StatelessWidget {
     this.onDelete,
     this.onDeleteMedia,
     this.onSetCover,
+    this.onAiEdit,
     this.showDragHandle = false,
   });
 
@@ -26,6 +27,7 @@ class RoomCard extends StatelessWidget {
   final Future<void> Function()? onDelete;
   final Future<void> Function(String mediaId)? onDeleteMedia;
   final Future<void> Function(String imageUrl)? onSetCover;
+  final void Function(String mediaId, String imageUrl)? onAiEdit;
   final bool showDragHandle;
 
   @override
@@ -248,6 +250,20 @@ class RoomCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (onAiEdit != null)
+              ListTile(
+                leading: const Icon(Icons.auto_fix_high,
+                    color: Color(0xFF22C55E)),
+                title: const Text(
+                  'AI ile düzenle',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Eşya kaldır · ekle · renk değiştir',
+                  style: TextStyle(fontSize: 11),
+                ),
+                onTap: () => Navigator.pop(ctx, 'ai'),
+              ),
             if (onSetCover != null)
               ListTile(
                 leading: const Icon(Icons.image_outlined),
@@ -265,6 +281,10 @@ class RoomCard extends StatelessWidget {
         ),
       ),
     );
+    if (action == 'ai' && onAiEdit != null) {
+      onAiEdit!(mediaId, url);
+      return;
+    }
     if (action == 'cover' && onSetCover != null) {
       try {
         await onSetCover!(url);
