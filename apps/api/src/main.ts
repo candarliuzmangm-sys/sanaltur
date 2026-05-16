@@ -43,8 +43,8 @@ async function bootstrap() {
 
   SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config));
 
-  const port = process.env.PORT ?? 3001;
-  await app.listen(port);
+  const port = Number(process.env.PORT) || 3001;
+  await app.listen(port, '0.0.0.0');
   console.log(`API running on http://localhost:${port}`);
   console.log(`Uploads served at http://localhost:${port}/uploads/`);
 }
