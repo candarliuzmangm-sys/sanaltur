@@ -28,6 +28,7 @@ class UploadTaskModel extends HiveObject {
     this.remoteKey,
     this.errorMessage,
     this.createdAt,
+    this.mediaType,
   });
 
   @HiveField(0)
@@ -63,11 +64,15 @@ class UploadTaskModel extends HiveObject {
   @HiveField(10)
   DateTime? createdAt;
 
+  @HiveField(11)
+  String? mediaType;
+
   UploadTaskModel copyWith({
     UploadStatus? status,
     double? progress,
     String? remoteKey,
     String? errorMessage,
+    String? mediaType,
   }) {
     return UploadTaskModel(
       id: id,
@@ -81,6 +86,7 @@ class UploadTaskModel extends HiveObject {
       remoteKey: remoteKey ?? this.remoteKey,
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt,
+      mediaType: mediaType ?? this.mediaType,
     );
   }
 }

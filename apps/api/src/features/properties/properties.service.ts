@@ -216,7 +216,7 @@ export class PropertiesService {
           name: r.name,
           type: String(r.aiDetectedType ?? r.type),
           order: r.order,
-          media: r.media.map((m) => ({ url: m.url })),
+          media: r.media.map((m) => ({ url: m.url, type: String(m.type) })),
         })),
       );
     }

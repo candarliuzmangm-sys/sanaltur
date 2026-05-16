@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export class ConfirmMediaDto {
   @IsString()
@@ -10,4 +10,8 @@ export class ConfirmMediaDto {
   @IsOptional()
   @IsString()
   fileName?: string;
+
+  @IsOptional()
+  @IsIn(['IMAGE', 'PANORAMA', 'VIDEO'])
+  mediaType?: 'IMAGE' | 'PANORAMA' | 'VIDEO';
 }

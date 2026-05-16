@@ -167,7 +167,7 @@ export class AiJobsProcessor extends WorkerHost {
         name: r.name,
         type: String(r.aiDetectedType ?? r.type),
         order: r.order ?? i,
-        media: r.media.map((m: any) => ({ url: m.url })),
+        media: r.media.map((m: any) => ({ url: m.url, type: String(m.type) })),
       })),
     );
 

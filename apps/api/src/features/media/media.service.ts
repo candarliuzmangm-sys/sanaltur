@@ -25,6 +25,7 @@ export class MediaService {
     userId: string,
     roomId: string,
     file: Express.Multer.File,
+    typeHint?: 'IMAGE' | 'PANORAMA' | 'VIDEO',
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('File is required');
@@ -51,9 +52,7 @@ export class MediaService {
       url = this.storage.getPublicUrl(key);
     }
 
-    const mediaType = mimeType.startsWith('video/')
-      ? MediaType.VIDEO
-      : MediaType.IMAGE;
+    const mediaType = resolveMediaType(mimeType, typeHint);
 
     const media = await this.prisma.media.create({
       data: {
@@ -66,7 +65,7 @@ export class MediaService {
       },
     });
 
-    if (mediaType === MediaType.IMAGE) {
+    if (mediaType !== MediaType.VIDEO) {
       const roomUpdates: { coverPhotoUrl?: string } = {};
       if (!room.coverPhotoUrl) roomUpdates.coverPhotoUrl = url;
       if (Object.keys(roomUpdates).length) {
@@ -120,9 +119,7 @@ export class MediaService {
   async confirm(userId: string, roomId: string, dto: ConfirmMediaDto) {
     const room = await this.ensureRoomOwner(userId, roomId);
     const url = this.storage.getPublicUrl(dto.key);
-    const mediaType = dto.mimeType.startsWith('video/')
-      ? MediaType.VIDEO
-      : MediaType.IMAGE;
+    const mediaType = resolveMediaType(dto.mimeType, dto.mediaType);
 
     const media = await this.prisma.media.create({
       data: {
@@ -135,7 +132,7 @@ export class MediaService {
       },
     });
 
-    if (mediaType === MediaType.IMAGE) {
+    if (mediaType !== MediaType.VIDEO) {
       if (!room.coverPhotoUrl) {
         await this.prisma.room.update({
           where: { id: roomId },
@@ -219,4 +216,14 @@ export class MediaService {
     if (room.property.userId !== userId) throw new ForbiddenException();
     return room;
   }
+}
+
+function resolveMediaType(
+  mimeType: string,
+  hint?: 'IMAGE' | 'PANORAMA' | 'VIDEO',
+): MediaType {
+  if (hint === 'PANORAMA') return MediaType.PANORAMA;
+  if (hint === 'VIDEO' || mimeType.startsWith('video/')) return MediaType.VIDEO;
+  if (hint === 'IMAGE') return MediaType.IMAGE;
+  return MediaType.IMAGE;
 }

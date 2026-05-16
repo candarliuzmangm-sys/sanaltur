@@ -37,8 +37,14 @@ export class MediaController {
     @CurrentUser() user: { userId: string },
     @Param('roomId') roomId: string,
     @UploadedFile() file: Express.Multer.File,
+    @Body() body: { mediaType?: string },
   ) {
-    return this.mediaService.uploadFile(user.userId, roomId, file);
+    const requested = (body?.mediaType ?? '').toUpperCase();
+    const hint =
+      requested === 'PANORAMA' || requested === 'VIDEO' || requested === 'IMAGE'
+        ? (requested as 'PANORAMA' | 'VIDEO' | 'IMAGE')
+        : undefined;
+    return this.mediaService.uploadFile(user.userId, roomId, file, hint);
   }
 
   @Post('presign')

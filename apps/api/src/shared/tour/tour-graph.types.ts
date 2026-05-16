@@ -14,6 +14,10 @@ export interface TourGraphNodeDto {
   order: number;
   thumbnailUrl?: string;
   panoramaUrl?: string;
+  /** Birincil görselin türü: gerçek 360° (PANORAMA) ya da düz foto (IMAGE) */
+  mediaType?: 'PANORAMA' | 'IMAGE';
+  /** Tüm medyalar — flat moddaki galeri kaydırması için */
+  media?: Array<{ url: string; type: 'PANORAMA' | 'IMAGE' }>;
   hotspots: TourHotspotDto[];
 }
 
@@ -38,6 +42,8 @@ export interface PublicTourResponse {
     order: number;
     thumbnailUrl?: string;
     panoramaUrl?: string;
+    mediaType?: 'PANORAMA' | 'IMAGE';
+    media?: Array<{ url: string; type: 'PANORAMA' | 'IMAGE' }>;
     connections: string[];
     hotspots: TourHotspotDto[];
   }>;

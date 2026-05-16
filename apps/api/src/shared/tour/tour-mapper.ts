@@ -37,6 +37,10 @@ export function mapTourGraphToPublic(
       order: node.order,
       thumbnailUrl: resolveMedia(node.thumbnailUrl),
       panoramaUrl: resolveMedia(node.panoramaUrl),
+      mediaType: node.mediaType,
+      media: (node.media ?? [])
+        .map((m) => ({ url: resolveMedia(m.url) ?? '', type: m.type }))
+        .filter((m) => m.url),
       connections: connectionMap.get(node.id) ?? [],
       hotspots: node.hotspots.map((h) => ({
         ...h,
@@ -46,7 +50,7 @@ export function mapTourGraphToPublic(
   };
 }
 
-/** Eski graphJson (hotspots yok) için geriye dönük uyumluluk. */
+/** Eski graphJson (hotspots/media yok) için geriye dönük uyumluluk. */
 export function normalizeStoredGraph(raw: unknown): TourGraphDto | null {
   if (!raw || typeof raw !== 'object') return null;
   const g = raw as {
@@ -57,6 +61,8 @@ export function normalizeStoredGraph(raw: unknown): TourGraphDto | null {
       order: number;
       thumbnailUrl?: string;
       panoramaUrl?: string;
+      mediaType?: string;
+      media?: Array<{ url: string; type?: string }>;
       hotspots?: TourGraphDto['nodes'][0]['hotspots'];
     }>;
     edges?: Array<{ from: string; to: string }>;
@@ -71,7 +77,7 @@ export function normalizeStoredGraph(raw: unknown): TourGraphDto | null {
     outgoing.set(edge.from, [...(outgoing.get(edge.from) ?? []), edge.to]);
   }
 
-  const nodes = g.nodes.map((node) => {
+  const nodes: TourGraphDto['nodes'] = g.nodes.map((node) => {
     let hotspots = node.hotspots ?? [];
     if (hotspots.length === 0) {
       const targets = outgoing.get(node.id) ?? [];
@@ -84,7 +90,18 @@ export function normalizeStoredGraph(raw: unknown): TourGraphDto | null {
         pitch: -0.12,
       }));
     }
-    return { ...node, hotspots };
+    const media = (node.media ?? []).map((m) => ({
+      url: m.url,
+      type: (String(m.type ?? '').toUpperCase() === 'PANORAMA'
+        ? 'PANORAMA'
+        : 'IMAGE') as 'PANORAMA' | 'IMAGE',
+    }));
+    const mediaType =
+      (String(node.mediaType ?? '').toUpperCase() === 'PANORAMA'
+        ? 'PANORAMA'
+        : undefined) ??
+      (media.find((m) => m.type === 'PANORAMA') ? 'PANORAMA' : 'IMAGE');
+    return { ...node, hotspots, media, mediaType };
   });
 
   return {

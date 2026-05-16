@@ -41,6 +41,7 @@ class UploadQueueNotifier extends StateNotifier<List<UploadTaskModel>> {
     required String localPath,
     required String mimeType,
     String? fileName,
+    String? mediaType,
   }) async {
     final repo = _ref.read(uploadRepositoryProvider);
     final task = await repo.enqueueMedia(
@@ -49,6 +50,7 @@ class UploadQueueNotifier extends StateNotifier<List<UploadTaskModel>> {
       localPath: localPath,
       mimeType: mimeType,
       fileName: fileName,
+      mediaType: mediaType,
     );
     _refresh();
     return processTask(task.id);

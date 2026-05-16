@@ -43,8 +43,11 @@ class UploadRepository {
     required String localPath,
     required String mimeType,
     String? fileName,
+    String? mediaType,
   }) async {
-    final compressed = await _compressIfImage(localPath, mimeType);
+    final compressed = mediaType == 'PANORAMA'
+        ? localPath
+        : await _compressIfImage(localPath, mimeType);
     final task = UploadTaskModel(
       id: _uuid.v4(),
       propertyId: propertyId,
@@ -53,6 +56,7 @@ class UploadRepository {
       mimeType: mimeType,
       fileName: fileName ?? p.basename(compressed),
       createdAt: DateTime.now(),
+      mediaType: mediaType,
     );
     await UploadQueueStorage.enqueue(task);
     return task;
@@ -64,15 +68,19 @@ class UploadRepository {
     required String localPath,
     required String mimeType,
     String? fileName,
+    String? mediaType,
     void Function(double progress)? onProgress,
   }) async {
-    final compressed = await _compressIfImage(localPath, mimeType);
+    final compressed = mediaType == 'PANORAMA'
+        ? localPath
+        : await _compressIfImage(localPath, mimeType);
     final file = File(compressed);
     if (!await file.exists()) {
       throw Exception('Dosya bulunamadı: $compressed');
     }
 
     final formData = FormData.fromMap({
+      if (mediaType != null) 'mediaType': mediaType,
       'file': await MultipartFile.fromFile(
         compressed,
         filename: fileName ?? p.basename(compressed),
@@ -104,6 +112,7 @@ class UploadRepository {
       }
 
       final formData = FormData.fromMap({
+        if (task.mediaType != null) 'mediaType': task.mediaType,
         'file': await MultipartFile.fromFile(
           task.localPath,
           filename: task.fileName,

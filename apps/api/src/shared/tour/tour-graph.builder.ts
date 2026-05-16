@@ -1,11 +1,15 @@
-import type { TourGraphDto, TourGraphNodeDto, TourHotspotDto } from './tour-graph.types';
+import type {
+  TourGraphDto,
+  TourGraphNodeDto,
+  TourHotspotDto,
+} from './tour-graph.types';
 
 export interface RoomForTourGraph {
   id: string;
   name: string;
   type: string;
   order: number;
-  media: Array<{ url: string }>;
+  media: Array<{ url: string; type?: string | null }>;
 }
 
 /** Sıralı oda zinciri + geri dönüş kenarları; panoramada gezinme hotspotları üretir. */
@@ -27,7 +31,16 @@ export function buildTourGraph(rooms: RoomForTourGraph[]): TourGraphDto {
   }
 
   const nodes: TourGraphNodeDto[] = sorted.map((room) => {
-    const panoramaUrl = room.media[0]?.url;
+    const allMedia = (room.media || []).map((m) => ({
+      url: m.url,
+      type: ((m.type || '').toUpperCase() === 'PANORAMA'
+        ? 'PANORAMA'
+        : 'IMAGE') as 'PANORAMA' | 'IMAGE',
+    }));
+    // Panorama varsa ilk panoramayı, yoksa ilk fotoğrafı kullan.
+    const primary = allMedia.find((m) => m.type === 'PANORAMA') ?? allMedia[0];
+    const panoramaUrl = primary?.url;
+    const mediaType = primary?.type;
     const targets = outgoing.get(room.id) ?? [];
     const hotspots = buildHotspots(room.id, targets, nameById);
 
@@ -38,6 +51,8 @@ export function buildTourGraph(rooms: RoomForTourGraph[]): TourGraphDto {
       order: room.order,
       thumbnailUrl: panoramaUrl,
       panoramaUrl,
+      mediaType,
+      media: allMedia,
       hotspots,
     };
   });
