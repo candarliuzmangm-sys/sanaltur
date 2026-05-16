@@ -209,17 +209,29 @@ export class MediaService {
     let result;
     switch (dto.op) {
       case 'erase':
-        result = await this.stability.erase({
+        // Stability'nin /erase endpoint'i alpha-channel mask gerektirir.
+        // Mobil/web'de mask çizimi yok — bu yüzden search-and-replace ile
+        // "tüm eşyalar -> boş oda" yaparak pratik boşaltma sağlıyoruz.
+        result = await this.stability.searchAndReplace({
           image: original,
-          prompt: dto.prompt,
+          searchPrompt:
+            dto.target ??
+            'furniture, sofa, couch, chairs, table, bed, lamps, rug, decoration, plants, frames',
+          prompt:
+            dto.prompt ??
+            'empty clean room, polished wooden floor, white walls, natural soft daylight, professional real estate photo, no objects',
         });
         break;
       case 'inpaint':
         if (!dto.prompt) {
           throw new BadRequestException('inpaint için prompt zorunlu');
         }
-        result = await this.stability.inpaint({
+        // Mask yoksa: search-and-replace ile boş yere ekleme yap.
+        // search="empty floor / empty space" -> replace=prompt
+        result = await this.stability.searchAndReplace({
           image: original,
+          searchPrompt:
+            dto.target ?? 'empty floor, empty space, blank area in center',
           prompt: dto.prompt,
         });
         break;
