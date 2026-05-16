@@ -32,6 +32,22 @@ class TourHotspotModel {
       };
 }
 
+class TourRoomMediaModel {
+  const TourRoomMediaModel({required this.url, required this.type});
+
+  final String url;
+  final String type;
+
+  factory TourRoomMediaModel.fromJson(Map<String, dynamic> json) {
+    return TourRoomMediaModel(
+      url: json['url'] as String,
+      type: (json['type'] as String?) ?? 'IMAGE',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'url': url, 'type': type};
+}
+
 class TourRoomModel {
   const TourRoomModel({
     required this.id,
@@ -40,6 +56,8 @@ class TourRoomModel {
     required this.order,
     this.panoramaUrl,
     this.thumbnailUrl,
+    this.mediaType,
+    this.media = const [],
     required this.connections,
     required this.hotspots,
   });
@@ -50,6 +68,8 @@ class TourRoomModel {
   final int order;
   final String? panoramaUrl;
   final String? thumbnailUrl;
+  final String? mediaType;
+  final List<TourRoomMediaModel> media;
   final List<String> connections;
   final List<TourHotspotModel> hotspots;
 
@@ -61,6 +81,10 @@ class TourRoomModel {
       order: json['order'] as int,
       panoramaUrl: json['panoramaUrl'] as String?,
       thumbnailUrl: json['thumbnailUrl'] as String?,
+      mediaType: json['mediaType'] as String?,
+      media: (json['media'] as List<dynamic>? ?? [])
+          .map((e) => TourRoomMediaModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
       connections: (json['connections'] as List<dynamic>? ?? [])
           .map((e) => e as String)
           .toList(),
@@ -77,6 +101,9 @@ class TourRoomModel {
         'order': order,
         if (panoramaUrl != null) 'panoramaUrl': panoramaUrl,
         if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+        if (mediaType != null) 'mediaType': mediaType,
+        if (media.isNotEmpty)
+          'media': media.map((m) => m.toJson()).toList(),
         'connections': connections,
         'hotspots': hotspots.map((h) => h.toJson()).toList(),
       };

@@ -22,14 +22,19 @@ class TourPreviewPage extends ConsumerStatefulWidget {
 
 class _TourPreviewPageState extends ConsumerState<TourPreviewPage> {
   WebViewController? _controller;
-  bool _injected = false;
 
   void _injectTour(Object tourJson) {
     final controller = _controller;
-    if (controller == null || _injected) return;
-    _injected = true;
+    if (controller == null) return;
     final payload = jsonEncode(tourJson);
-    controller.runJavaScript('window.initTour($payload);');
+    // viewer.html dosyası `window.__TOUR_DATA__` set edildiğinde tetiklenecek
+    // şekilde tasarlandı — JS yüklenmeden gelirse global'da bekler.
+    controller.runJavaScript(
+      'window.__TOUR_DATA__ = $payload;'
+      'if (typeof window.initTour === "function") {'
+      '  window.initTour(window.__TOUR_DATA__);'
+      '}',
+    );
   }
 
   @override
@@ -84,7 +89,6 @@ class _TourPreviewPageState extends ConsumerState<TourPreviewPage> {
           message: e.toString(),
           onRetry: () {
             setState(() {
-              _injected = false;
               _controller = null;
             });
             ref.invalidate(propertyTourProvider(widget.propertyId));
@@ -92,19 +96,25 @@ class _TourPreviewPageState extends ConsumerState<TourPreviewPage> {
         ),
         data: (tour) {
           final tourJson = tour.toJson();
-          _controller ??= WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..setBackgroundColor(const Color(0xFF0C0F0E))
-            ..setNavigationDelegate(
-              NavigationDelegate(
-                onPageFinished: (_) => _injectTour(tourJson),
-              ),
-            )
-            ..loadRequest(Uri.parse(Env.tourViewerUrl));
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _injectTour(tourJson);
-          });
+          if (_controller == null) {
+            _controller = WebViewController()
+              ..setJavaScriptMode(JavaScriptMode.unrestricted)
+              ..setBackgroundColor(const Color(0xFF0C0F0E))
+              ..setNavigationDelegate(
+                NavigationDelegate(
+                  onPageFinished: (_) => _injectTour(tourJson),
+                  onWebResourceError: (err) {
+                    debugPrint('WebView error: ${err.description}');
+                  },
+                ),
+              )
+              ..loadRequest(Uri.parse(Env.tourViewerUrl));
+          } else {
+            // Tur veri değişikliğinde mevcut WebView'a yeni veriyi enjekte et.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _injectTour(tourJson);
+            });
+          }
 
           return WebViewWidget(
             key: ValueKey('${widget.propertyId}-${tour.rooms.length}'),
